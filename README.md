@@ -1,7 +1,7 @@
 # Aotenjo Master
 This is Aotenjo Master board firmware repository. It controls the motors with the CAN protocol.
 
-<img src="https://aotenjo.xyz/img/master-v1.0.png" alt="Aotenjo Master" width="500"/>
+<img src="/.github/images/master-v1.0.png" alt="Aotenjo Master" width="500"/>
 
 
 Features
@@ -9,7 +9,7 @@ Features
 - CAN (up to 1Mbps)
 - USB type C
 
-![Aotenjo Master Diagram](https://aotenjo.xyz/img/master-diagram.png)
+![Aotenjo Master Diagram](/.github/images/master-diagram.png)
 
 ## Install
 
