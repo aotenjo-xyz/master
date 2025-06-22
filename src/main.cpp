@@ -6,7 +6,7 @@
 #include "STM32CAN.h"
 // clang-format on
 
-int CAN_LED_PIN = PC4;
+int CAN_LED_PIN = PC6;
 int ESTOP_LED_PIN = PC15;
 
 class RxFromCAN : public PingPongNotificationsFromCAN {
