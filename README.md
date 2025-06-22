@@ -1,7 +1,7 @@
 # Aotenjo Master
 This is Aotenjo Master board firmware repository. It controls the motors with the CAN protocol.
 
-<img src="/.github/images/master-v1.0.png" alt="Aotenjo Master" width="500"/>
+<img src="/.github/images/master-v1.1.png" alt="Aotenjo Master" width="500"/>
 
 
 Features
