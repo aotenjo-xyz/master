@@ -1,23 +1,11 @@
-/* Symbolic names for ID of CAN message                                      */
-typedef enum {
-  M0_ANGLE_CNTL = 0x20,
-  M1_ANGLE_CNTL,
-  M2_ANGLE_CNTL,
-  M3_ANGLE_CNTL,
-  M0_POS,
-  M1_POS,
-  M2_POS,
-  M3_POS,
-  ESTOP
-} CAN_ID;
-
-/* Symbolic names for ID of Motor                                            */
-typedef enum { MOTOR_0_ID = 0, MOTOR_1_ID, MOTOR_2_ID, MOTOR_3_ID } MOTOR_ID;
+#define ANGLE_COMMAND_OFFSET 0x20
+#define POS_COMMAND_OFFSET 0x30
+#define ESTOP 0xff
 
 class PingPongNotificationsFromCAN {
 public:
   virtual void ReceivedMotorPosition(const uint8_t *data,
-                                     const MOTOR_ID motor_id) = 0;
+                                     const uint32_t motor_id) = 0;
 };
 
 class CANPingPong : public SimpleCANProfile {
@@ -31,26 +19,8 @@ public:
 
   void HandleCanMessage(const SimpleCanRxHeader rxHeader,
                         const uint8_t *rxData) {
-    // Serial.println("@");
-
-    switch (rxHeader.Identifier) {
-    case M0_POS:
-      pRxCommands->ReceivedMotorPosition(rxData, MOTOR_0_ID);
-      break;
-    case M1_POS:
-      pRxCommands->ReceivedMotorPosition(rxData, MOTOR_1_ID);
-      break;
-    case M2_POS:
-      pRxCommands->ReceivedMotorPosition(rxData, MOTOR_2_ID);
-      break;
-    case M3_POS:
-      pRxCommands->ReceivedMotorPosition(rxData, MOTOR_3_ID);
-      break;
-    default:
-      Serial.printf("y:0x%x DLC=0x%x ", rxHeader.Identifier,
-                    rxHeader.DataLength);
-      Serial.println();
-    }
+    pRxCommands->ReceivedMotorPosition(rxData, rxHeader.Identifier -
+                                                   POS_COMMAND_OFFSET);
   }
 
 private:

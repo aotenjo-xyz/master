@@ -13,7 +13,7 @@ class RxFromCAN : public PingPongNotificationsFromCAN {
 public:
   RxFromCAN(){};
 
-  void ReceivedMotorPosition(const uint8_t *data, const MOTOR_ID motor_id) {
+  void ReceivedMotorPosition(const uint8_t *data, const uint32_t motor_id) {
     float angle = unpackAngleFromCanMessage(data);
     //   print M<id>P<angle>
     Serial.printf("M%dP%.2f\n", motor_id, angle);
@@ -42,14 +42,14 @@ void setup() {
   Serial.println("Start!");
 }
 
-void handleMotorAngleCommand(int _motor_id, CAN_ID _can_id, float targetAngle,
+void handleMotorAngleCommand(int _motor_id, uint32_t _can_id, float targetAngle,
                              CAN_msg_t *message) {
   Serial.printf("M%dA%.2f\n", _motor_id, targetAngle);
   message->id = _can_id;
   packAngleIntoCanMessage(message, targetAngle);
 }
 
-void handleMotorPositionCommand(int _motor_id, CAN_ID _can_id,
+void handleMotorPositionCommand(int _motor_id, uint32_t _can_id,
                                 CAN_msg_t *message) {
   Serial.printf(F("Requesting motor %d position\n"), _motor_id);
   message->id = _can_id;
@@ -64,42 +64,13 @@ PARSE_RESULT parseCommand(String command, CAN_msg_t *message) {
     if (sepIdx != -1) { // Angle control: MxAangle
       motorId = command.substring(1, sepIdx).toInt();
       float targetAngle = command.substring(sepIdx + 1).toFloat();
-      switch (motorId) {
-      case MOTOR_0_ID:
-        handleMotorAngleCommand(motorId, M0_ANGLE_CNTL, targetAngle, message);
-        break;
-      case MOTOR_1_ID:
-        handleMotorAngleCommand(motorId, M1_ANGLE_CNTL, targetAngle, message);
-        break;
-      case MOTOR_2_ID:
-        handleMotorAngleCommand(motorId, M2_ANGLE_CNTL, targetAngle, message);
-        break;
-      case MOTOR_3_ID:
-        handleMotorAngleCommand(motorId, M3_ANGLE_CNTL, targetAngle, message);
-        break;
-      default:
-        return INVALID_COMMAND;
-      }
+      handleMotorAngleCommand(motorId, motorId + ANGLE_COMMAND_OFFSET,
+                              targetAngle, message);
       return ANG_CONTROL;
     } else if (posIdx != -1) { // Position request: MxP
       motorId = command.substring(1, posIdx).toInt();
-      switch (motorId) {
-      case MOTOR_0_ID:
-        handleMotorPositionCommand(motorId, M0_POS, message);
-        break;
-      case MOTOR_1_ID:
-        handleMotorPositionCommand(motorId, M1_POS, message);
-        break;
-      case MOTOR_2_ID:
-        handleMotorPositionCommand(motorId, M2_POS, message);
-        break;
-      case MOTOR_3_ID:
-        handleMotorPositionCommand(motorId, M3_POS, message);
-        break;
-      default:
-        return INVALID_COMMAND;
-      }
-      return REQ_DATA;
+      handleMotorPositionCommand(motorId, motorId + POS_COMMAND_OFFSET,
+                                 message);
     }
   } else if (command.startsWith("ESTOP")) {
     message->id = ESTOP;
