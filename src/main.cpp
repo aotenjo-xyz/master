@@ -71,6 +71,7 @@ PARSE_RESULT parseCommand(String command, CAN_msg_t *message) {
       motorId = command.substring(1, posIdx).toInt();
       handleMotorPositionCommand(motorId, motorId + POS_COMMAND_OFFSET,
                                  message);
+      return REQ_DATA;
     }
   } else if (command.startsWith("ESTOP")) {
     message->id = ESTOP;
