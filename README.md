@@ -8,6 +8,7 @@ Features
 - STM32G431CB (128KB Flash, 32KB RAM, 170MHz)
 - CAN (up to 1Mbps)
 - USB type C
+- CAN FD support
 
 ![Aotenjo Master Diagram](/.github/images/master-diagram.png)
 
@@ -18,28 +19,12 @@ Install this repo
 git clone https://github.com/aotenjo-xyz/master.git 
 ```
 
-Install dependencies(SimpleCanLib)
-```bash
-mkdir Libraries
-cd Libraries
-git clone https://github.com/yuichiroaoki/SimpleCanLib.git
-git checkout CANSendByte
-```
+## Compatibility
+This firmware is compatible with Aotenjo Master v2.0 and later.
 
+> [!WARNING]
+> This firmware is not compatible with Aotenjo Master v1.x.
 
-Directory structure
-```bash
-├── Libraries
-│   └── SimpleCanLib
-└── master
-    ├── include
-    ├── lib
-    ├── LICENSE
-    ├── platformio.ini
-    ├── README.md
-    ├── src
-    └── test
-```
 
 ## Usage
 
