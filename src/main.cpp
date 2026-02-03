@@ -1,13 +1,19 @@
 // clang-format off
 #include <Arduino.h>
 #include <math.h>
-#include "SimpleCAN.h"
-#include "CANProfile.h"
 #include "STM32CAN.h"
+#include "VSENSE.h"
 // clang-format on
 
 int CAN_LED_PIN = PC6;
 int ESTOP_LED_PIN = PC15;
+
+// CAN FD Configuration
+FDCAN_HandleTypeDef hfdcan1;
+FDCAN_TxHeaderTypeDef txHeader;
+FDCAN_RxHeaderTypeDef rxHeader;
+uint8_t txData[64]; // CAN FD can support up to 64 bytes
+uint8_t rxData[64];
 
 /**
  * @brief System Clock Configuration
@@ -53,53 +59,217 @@ void SystemClock_Config(void) {
   }
 }
 
-class RxFromCAN : public PingPongNotificationsFromCAN {
-public:
-  RxFromCAN(){};
+/**
+ * @brief FDCAN1 Initialization Function
+ * @param None
+ * @retval None
+ */
+void MX_FDCAN1_Init(void) {
+  hfdcan1.Instance = FDCAN1;
 
-  void ReceivedMotorPosition(const uint8_t *data, const uint32_t motor_id) {
-    float angle = unpackAngleFromCanMessage(data);
-    //   print M<id>P<angle>
-    Serial.printf("M%dP%.2f\n", motor_id, angle);
-  };
+  // Basic configuration
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS; // CAN FD with Bit Rate Switch
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.AutoRetransmission = ENABLE;
+  hfdcan1.Init.TransmitPause = DISABLE;
+  hfdcan1.Init.ProtocolException = DISABLE;
+
+  // Nominal Bit Timing (Classic CAN part): 500 kbit/s
+  hfdcan1.Init.NominalPrescaler = 10;
+  hfdcan1.Init.NominalSyncJumpWidth = 1;
+  hfdcan1.Init.NominalTimeSeg1 = 13;
+  hfdcan1.Init.NominalTimeSeg2 = 2;
+
+  // Data Bit Timing (CAN FD part): 2 Mbit/s
+  hfdcan1.Init.DataPrescaler = 1;
+  hfdcan1.Init.DataSyncJumpWidth = 1;
+  hfdcan1.Init.DataTimeSeg1 = 13;
+  hfdcan1.Init.DataTimeSeg2 = 2;
+
+  // Message RAM configuration
+  hfdcan1.Init.StdFiltersNbr = 1;
+  hfdcan1.Init.ExtFiltersNbr = 0;
+
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) {
+    Serial.println("FDCAN initialization failed!");
+    Error_Handler();
+  }
+
+  // Configure global filter to accept all messages
+  if (HAL_FDCAN_ConfigGlobalFilter(
+          &hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0,
+          FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE) != HAL_OK) {
+    Serial.println("FDCAN global filter configuration failed!");
+    Error_Handler();
+  }
+
+  // Start FDCAN
+  if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
+    Serial.println("FDCAN start failed!");
+    Error_Handler();
+  }
+
+  Serial.println("FDCAN initialized successfully!");
+}
+
+/**
+ * @brief GPIO Initialization Function for FDCAN1
+ * @param None
+ * @retval None
+ */
+void MX_FDCAN1_GPIO_Init(void) {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  // Enable GPIOB clock
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  // Configure GPIO pins for FDCAN1
+  // PB8: FDCAN1_RX
+  // PB9: FDCAN1_TX
+  GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF9_FDCAN1;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+/**
+ * @brief Sends a CAN FD message with specified ID and data payload
+ *
+ * @param id The CAN message identifier (11-bit or 29-bit depending on
+ * configuration)
+ * @param data Pointer to the data buffer containing the message payload
+ * @param length Number of bytes in the data payload (0-64 bytes for CAN FD)
+ *
+ * @return HAL_StatusTypeDef Returns HAL_OK on success, or appropriate error
+ * code on failure
+ */
+HAL_StatusTypeDef CANFD_SendMessage(uint32_t id, uint8_t *data,
+                                    uint8_t length) {
+  // Configure transmission header
+  txHeader.Identifier = id;
+  txHeader.IdType = FDCAN_STANDARD_ID;
+  txHeader.TxFrameType = FDCAN_DATA_FRAME;
+  txHeader.DataLength = GetFDCANDataLengthCode(length);
+  txHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+  txHeader.BitRateSwitch = FDCAN_BRS_ON; // Enable bit rate switching for CAN FD
+  txHeader.FDFormat = FDCAN_FD_CAN;      // CAN FD format
+  txHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+  txHeader.MessageMarker = 0;
+
+  // Send message
+  return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, data);
+}
+
+void ReceivedMotorPosition(const uint8_t *data, const uint32_t motor_id) {
+  float angle = unpackAngleFromCanMessage(data);
+  //   print M<id>P<angle>
+  Serial.printf("M%dP%.2f\n", motor_id, angle);
 };
 
-RxFromCAN CANBroker;
+/**
+ * @brief Check for received CAN FD messages
+ * @param None
+ * @retval None
+ */
+void CANFD_CheckReceived(void) {
+  if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rxHeader, rxData) ==
+      HAL_OK) {
 
-CANPingPong CANDevice(CreateCanLib(PB9, PB8), &CANBroker);
+    uint8_t dataLength = GetBytesFromFDCANDataLength(rxHeader.DataLength);
+
+    Serial.print("ID: 0x");
+    Serial.print(rxHeader.Identifier, HEX);
+    Serial.print(" (");
+    Serial.print(dataLength);
+    Serial.print(" bytes)");
+
+    // Check if this is CAN FD format
+    if (rxHeader.FDFormat == FDCAN_FD_CAN) {
+      Serial.print(" [CAN FD]");
+      if (rxHeader.BitRateSwitch == FDCAN_BRS_ON) {
+        Serial.print(" [BRS]");
+      }
+    } else {
+      Serial.print(" [Classic CAN]");
+    }
+    Serial.println();
+
+    // Display message content based on size
+    if (dataLength <= 8) {
+      uint32_t motor_id = rxHeader.Identifier - POS_COMMAND_OFFSET;
+      Serial.print("  Motor ID: ");
+      Serial.println(motor_id);
+
+      ReceivedMotorPosition(rxData, motor_id);
+    }
+
+    // Toggle LED when message received
+    digitalWrite(CAN_LED_PIN, !digitalRead(CAN_LED_PIN));
+  }
+}
 
 void setup() {
   delay(100);
 
   Serial.begin(115200);
+  pinMode(CAN_LED_PIN, OUTPUT);
+
   delay(5000);
   // while (!Serial);
-  Serial.println("Started");
 
-  CANDevice.Init();
-  CANDevice.Can1->EnableBlinkOnActivity(CAN_LED_PIN);
+  // Initialize FDCAN GPIO
+  MX_FDCAN1_GPIO_Init();
+
+  // Enable FDCAN1 clock
+  __HAL_RCC_FDCAN_CLK_ENABLE();
+
+  // Initialize FDCAN1
+  MX_FDCAN1_Init();
 
   pinMode(ESTOP_LED_PIN, OUTPUT);
   digitalWrite(ESTOP_LED_PIN, LOW);
+
+  // --- START VREFBUF CONFIGURATION ---
+  // 1. Configure VREFBUF for 2.9V (Scale 2)
+  HAL_SYSCFG_VREFBUF_VoltageScalingConfig(SYSCFG_VREFBUF_VOLTAGE_SCALE2);
+
+  // Configure high impedance mode to disable (output onto VREF+ pin)
+  HAL_SYSCFG_VREFBUF_HighImpedanceConfig(SYSCFG_VREFBUF_HIGH_IMPEDANCE_DISABLE);
+
+  // Enable the Internal Voltage Reference buffer
+  HAL_SYSCFG_EnableVREFBUF();
+  // --- END VREFBUF CONFIGURATION ---
+
+  analogReadResolution(12);
 
   delay(1000);
   Serial.println("Start!");
 }
 
-void handleMotorAngleCommand(int _motor_id, uint32_t _can_id, float targetAngle,
-                             CAN_msg_t *message) {
+void handleMotorAngleCommand(int _motor_id, float targetAngle) {
   Serial.printf("M%dA%.2f\n", _motor_id, targetAngle);
-  message->id = _can_id;
-  packAngleIntoCanMessage(message, targetAngle);
+  packAngleIntoCanMessage(txData, targetAngle);
+  HAL_StatusTypeDef status =
+      CANFD_SendMessage(_motor_id + ANGLE_COMMAND_OFFSET, txData, 4);
+  if (status != HAL_OK) {
+    Serial.printf("Failed to send angle command to motor %d, error code: %d\n",
+                  _motor_id, status);
+  }
 }
 
-void handleMotorPositionCommand(int _motor_id, uint32_t _can_id,
-                                CAN_msg_t *message) {
+void handleMotorPositionCommand(int _motor_id) {
   Serial.printf(F("Requesting motor %d position\n"), _motor_id);
-  message->id = _can_id;
+  HAL_StatusTypeDef status =
+      CANFD_SendMessage(_motor_id + POS_COMMAND_OFFSET, nullptr, 0);
+  if (status != HAL_OK) {
+    Serial.printf("Failed to request position from motor %d, error code: %d\n",
+                  _motor_id, status);
+  }
 }
 
-PARSE_RESULT parseCommand(String command, CAN_msg_t *message) {
+void parseCommand(String command) {
   if (command.startsWith("M")) {
     int sepIdx = command.indexOf("A");
     int posIdx = command.indexOf("P");
@@ -108,21 +278,25 @@ PARSE_RESULT parseCommand(String command, CAN_msg_t *message) {
     if (sepIdx != -1) { // Angle control: MxAangle
       motorId = command.substring(1, sepIdx).toInt();
       float targetAngle = command.substring(sepIdx + 1).toFloat();
-      handleMotorAngleCommand(motorId, motorId + ANGLE_COMMAND_OFFSET,
-                              targetAngle, message);
-      return ANG_CONTROL;
+      handleMotorAngleCommand(motorId, targetAngle);
     } else if (posIdx != -1) { // Position request: MxP
       motorId = command.substring(1, posIdx).toInt();
-      handleMotorPositionCommand(motorId, motorId + POS_COMMAND_OFFSET,
-                                 message);
-      return REQ_DATA;
+      handleMotorPositionCommand(motorId);
     }
+  } else if (command.startsWith("VSENSE")) {
+    float vccVoltage = readVoltage();
+    Serial.printf("VCC Voltage: %.2f V\n", vccVoltage);
   } else if (command.startsWith("ESTOP")) {
-    message->id = ESTOP;
     Serial.println("Emergency stop command");
-    return EMERGENCY_STOP;
+    digitalWrite(ESTOP_LED_PIN, HIGH);
+    HAL_StatusTypeDef status = CANFD_SendMessage(ESTOP, nullptr, 0);
+    if (status != HAL_OK) {
+      Serial.printf("Failed to send emergency stop command, error code: %d\n",
+                    status);
+    }
+  } else {
+    Serial.println("Invalid command");
   }
-  return INVALID_COMMAND;
 }
 
 const int BUFFER_SIZE = 50;
@@ -130,30 +304,14 @@ char inputBuffer[BUFFER_SIZE];
 int bufferIndex = 0;
 
 void loop() {
-  CAN_msg_t CAN_TX_msg;
-
   // Check for serial input
   while (Serial.available() > 0) {
     char receivedChar = Serial.read();
     if (receivedChar == '\n') {
+      memset(txData, 0, sizeof(txData)); // Clear txData before use
+
       inputBuffer[bufferIndex] = '\0'; // Null-terminate the string
-      PARSE_RESULT result = parseCommand(inputBuffer, &CAN_TX_msg);
-      switch (result) {
-      case ANG_CONTROL:
-        CANDevice.CANSendByte(CAN_TX_msg.data, CAN_TX_msg.id);
-        break;
-      case REQ_DATA:
-        CANDevice.CANRequestCommand(CAN_TX_msg.id);
-        break;
-      case EMERGENCY_STOP:
-        CANDevice.CANRequestCommand(CAN_TX_msg.id);
-        digitalWrite(ESTOP_LED_PIN, HIGH);
-        break;
-      case INVALID_COMMAND:
-        // invalid command
-        Serial.println("Invalid command");
-        break;
-      }
+      parseCommand(inputBuffer);
       bufferIndex = 0; // Reset buffer index for the next command
     } else {
       if (bufferIndex < BUFFER_SIZE - 1) { // Prevent buffer overflow
@@ -162,6 +320,9 @@ void loop() {
     }
   }
 
-  // Update message queues.
-  CANDevice.Can1->Loop();
+  // Check for received messages
+  CANFD_CheckReceived();
+
+  // Small delay to prevent overwhelming the system
+  delay(10);
 }
