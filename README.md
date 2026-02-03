@@ -1,14 +1,15 @@
 # Aotenjo Master
-This is Aotenjo Master board firmware repository. It controls the motors with the CAN protocol.
+This is Aotenjo Master board firmware repository. It controls the motors with the FDCAN protocol.
 
-<img src="/.github/images/master-v1.1.png" alt="Aotenjo Master" width="500"/>
+[Docs](https://aotenjo.xyz/docs/category/aotenjo-master) | [Shop](https://shop.aotenjo.xyz/products/aotenjo-master-v2-1)
+
+<img src="/.github/images/master-v2.1.png" alt="Aotenjo Master v2.1" width="500"/>
 
 
 Features
 - STM32G431CB (128KB Flash, 32KB RAM, 170MHz)
-- CAN (up to 1Mbps)
+- FDCAN (CAN with Flexible Data-Rate)
 - USB type C
-- CAN FD support
 
 ![Aotenjo Master Diagram](/.github/images/master-diagram.png)
 
@@ -59,9 +60,3 @@ Format
 ```bash
 make format
 ```
-
-
-## References
-
-- [Igitigit2/SimpleCanLib: CAN bus library for ESP32 and STM32 G431](https://github.com/Igitigit2/SimpleCanLib)
-- [mackelec/meFDCAN: Arduino FDCAN library for stm32G4 microcontrollers](https://github.com/mackelec/meFDCAN)
