@@ -10,6 +10,7 @@ Features
 - STM32G431CB (128KB Flash, 32KB RAM, 170MHz)
 - FDCAN (CAN with Flexible Data-Rate)
 - USB type C
+- VCC voltage sensing
 
 ![Aotenjo Master Diagram](/.github/images/master-diagram.png)
 
@@ -47,6 +48,11 @@ M<motor_id>P
 e.g. Get motor 1 position
 ```
 M0P
+```
+
+### Read VCC voltage
+```
+VSENSE
 ```
 
 ### Emergency stop

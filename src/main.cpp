@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include "STM32CAN.h"
+#include "VSENSE.h"
 // clang-format on
 
 int CAN_LED_PIN = PC6;
@@ -230,6 +231,19 @@ void setup() {
   pinMode(ESTOP_LED_PIN, OUTPUT);
   digitalWrite(ESTOP_LED_PIN, LOW);
 
+  // --- START VREFBUF CONFIGURATION ---
+  // 1. Configure VREFBUF for 2.9V (Scale 2)
+  HAL_SYSCFG_VREFBUF_VoltageScalingConfig(SYSCFG_VREFBUF_VOLTAGE_SCALE2);
+
+  // Configure high impedance mode to disable (output onto VREF+ pin)
+  HAL_SYSCFG_VREFBUF_HighImpedanceConfig(SYSCFG_VREFBUF_HIGH_IMPEDANCE_DISABLE);
+
+  // Enable the Internal Voltage Reference buffer
+  HAL_SYSCFG_EnableVREFBUF();
+  // --- END VREFBUF CONFIGURATION ---
+
+  analogReadResolution(12);
+
   delay(1000);
   Serial.println("Start!");
 }
@@ -255,7 +269,7 @@ void handleMotorPositionCommand(int _motor_id) {
   }
 }
 
-PARSE_RESULT parseCommand(String command) {
+void parseCommand(String command) {
   if (command.startsWith("M")) {
     int sepIdx = command.indexOf("A");
     int posIdx = command.indexOf("P");
@@ -265,12 +279,13 @@ PARSE_RESULT parseCommand(String command) {
       motorId = command.substring(1, sepIdx).toInt();
       float targetAngle = command.substring(sepIdx + 1).toFloat();
       handleMotorAngleCommand(motorId, targetAngle);
-      return ANG_CONTROL;
     } else if (posIdx != -1) { // Position request: MxP
       motorId = command.substring(1, posIdx).toInt();
       handleMotorPositionCommand(motorId);
-      return REQ_DATA;
     }
+  } else if (command.startsWith("VSENSE")) {
+    float vccVoltage = readVoltage();
+    Serial.printf("VCC Voltage: %.2f V\n", vccVoltage);
   } else if (command.startsWith("ESTOP")) {
     Serial.println("Emergency stop command");
     digitalWrite(ESTOP_LED_PIN, HIGH);
@@ -279,10 +294,9 @@ PARSE_RESULT parseCommand(String command) {
       Serial.printf("Failed to send emergency stop command, error code: %d\n",
                     status);
     }
-    return EMERGENCY_STOP;
+  } else {
+    Serial.println("Invalid command");
   }
-  Serial.println("Invalid command");
-  return INVALID_COMMAND;
 }
 
 const int BUFFER_SIZE = 50;
