@@ -162,10 +162,19 @@ HAL_StatusTypeDef CANFD_SendMessage(uint32_t id, uint8_t *data,
   return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, data);
 }
 
-void ReceivedMotorPosition(const uint8_t *data, const uint32_t motor_id) {
-  float angle = unpackAngleFromCanMessage(data);
+void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id, int commandOffset) {
+  float value = unpackFloatFromCanMessage(data);
+  if (commandOffset == POS_COMMAND_OFFSET) {
+    Serial.printf("Received position response from motor %d: ", motor_id);
   //   print M<id>P<angle>
-  Serial.printf("M%dP%.2f\n", motor_id, angle);
+    Serial.printf("M%dP%.2f\n", motor_id, value);
+  } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
+    Serial.printf("Received VSENSE response from motor %d: ", motor_id);
+    // print M<id>V<vsense>
+    Serial.printf("M%dV%.2f\n", motor_id, value);
+  } else {
+    Serial.printf("Received response with unknown command offset 0x%X from motor %d: ", commandOffset, motor_id);
+  }
 };
 
 /**
@@ -198,11 +207,20 @@ void CANFD_CheckReceived(void) {
 
     // Display message content based on size
     if (dataLength <= 8) {
-      uint32_t motor_id = rxHeader.Identifier - POS_COMMAND_OFFSET;
+      // initialze motor id to -1 to indicate not found
+      int motor_id = -1;
+      // check if this is a position command response or VSENSE response based on the ID
+      if (rxHeader.Identifier < VSENSE_COMMAND_OFFSET) {
+        // Position command response
+        motor_id = rxHeader.Identifier - POS_COMMAND_OFFSET;
+        ReceivedFloatValue(rxData, motor_id, POS_COMMAND_OFFSET);
+      } else {
+        // VSENSE response        
+        motor_id = rxHeader.Identifier - VSENSE_COMMAND_OFFSET;
+        ReceivedFloatValue(rxData, motor_id, VSENSE_COMMAND_OFFSET);
+      }
       Serial.print("  Motor ID: ");
       Serial.println(motor_id);
-
-      ReceivedMotorPosition(rxData, motor_id);
     }
 
     // Toggle LED when message received
@@ -259,12 +277,18 @@ void handleMotorAngleCommand(int _motor_id, float targetAngle) {
   }
 }
 
-void handleMotorPositionCommand(int _motor_id) {
-  Serial.printf(F("Requesting motor %d position\n"), _motor_id);
+void handleMotorDataRequestCommand(int _motor_id, uint32_t commandOffset) {
+  if (commandOffset == POS_COMMAND_OFFSET) {
+    Serial.printf(F("Requesting motor %d position\n"), _motor_id);
+  } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
+    Serial.printf(F("Requesting motor %d VSENSE\n"), _motor_id);
+  } else {
+    Serial.printf(F("Requesting motor %d data with unknown command offset 0x%X\n"), _motor_id, commandOffset);
+  }
   HAL_StatusTypeDef status =
-      CANFD_SendMessage(_motor_id + POS_COMMAND_OFFSET, nullptr, 0);
+      CANFD_SendMessage(_motor_id + commandOffset, nullptr, 0);
   if (status != HAL_OK) {
-    Serial.printf("Failed to request position from motor %d, error code: %d\n",
+    Serial.printf("Failed to request data from motor %d, error code: %d\n",
                   _motor_id, status);
   }
 }
@@ -273,6 +297,7 @@ void parseCommand(String command) {
   if (command.startsWith("M")) {
     int sepIdx = command.indexOf("A");
     int posIdx = command.indexOf("P");
+    int motorVsenseIdx = command.indexOf("V");
     int motorId = -1;
 
     if (sepIdx != -1) { // Angle control: MxAangle
@@ -281,7 +306,10 @@ void parseCommand(String command) {
       handleMotorAngleCommand(motorId, targetAngle);
     } else if (posIdx != -1) { // Position request: MxP
       motorId = command.substring(1, posIdx).toInt();
-      handleMotorPositionCommand(motorId);
+      handleMotorDataRequestCommand(motorId, POS_COMMAND_OFFSET);
+    } else if (motorVsenseIdx != -1) { // VSENSE request: MxV
+      motorId = command.substring(1, motorVsenseIdx).toInt();
+      handleMotorDataRequestCommand(motorId, VSENSE_COMMAND_OFFSET);
     }
   } else if (command.startsWith("VSENSE")) {
     float vccVoltage = readVoltage();
