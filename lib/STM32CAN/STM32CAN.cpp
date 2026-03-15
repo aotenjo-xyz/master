@@ -7,10 +7,10 @@ void packAngleIntoCanMessage(uint8_t *message, float angle) {
 }
 
 // Function to unpack float angle from CAN message
-float unpackAngleFromCanMessage(const uint8_t *data) {
-  float angle;
-  memcpy(&angle, data, sizeof(float));
-  return angle;
+float unpackFloatFromCanMessage(const uint8_t *data) {
+  float value;
+  memcpy(&value, data, sizeof(float));
+  return value;
 }
 
 /**
