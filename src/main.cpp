@@ -162,18 +162,21 @@ HAL_StatusTypeDef CANFD_SendMessage(uint32_t id, uint8_t *data,
   return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, data);
 }
 
-void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id, int commandOffset) {
+void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id,
+                        int commandOffset) {
   float value = unpackFloatFromCanMessage(data);
   if (commandOffset == POS_COMMAND_OFFSET) {
     Serial.printf("Received position response from motor %d: ", motor_id);
-  //   print M<id>P<angle>
+    //   print M<id>P<angle>
     Serial.printf("M%dP%.2f\n", motor_id, value);
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
     Serial.printf("Received VSENSE response from motor %d: ", motor_id);
     // print M<id>V<vsense>
     Serial.printf("M%dV%.2f\n", motor_id, value);
   } else {
-    Serial.printf("Received response with unknown command offset 0x%X from motor %d: ", commandOffset, motor_id);
+    Serial.printf(
+        "Received response with unknown command offset 0x%X from motor %d: ",
+        commandOffset, motor_id);
   }
 };
 
@@ -209,13 +212,14 @@ void CANFD_CheckReceived(void) {
     if (dataLength <= 8) {
       // initialze motor id to -1 to indicate not found
       int motor_id = -1;
-      // check if this is a position command response or VSENSE response based on the ID
+      // check if this is a position command response or VSENSE response based
+      // on the ID
       if (rxHeader.Identifier < VSENSE_COMMAND_OFFSET) {
         // Position command response
         motor_id = rxHeader.Identifier - POS_COMMAND_OFFSET;
         ReceivedFloatValue(rxData, motor_id, POS_COMMAND_OFFSET);
       } else {
-        // VSENSE response        
+        // VSENSE response
         motor_id = rxHeader.Identifier - VSENSE_COMMAND_OFFSET;
         ReceivedFloatValue(rxData, motor_id, VSENSE_COMMAND_OFFSET);
       }
@@ -283,7 +287,9 @@ void handleMotorDataRequestCommand(int _motor_id, uint32_t commandOffset) {
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
     Serial.printf(F("Requesting motor %d VSENSE\n"), _motor_id);
   } else {
-    Serial.printf(F("Requesting motor %d data with unknown command offset 0x%X\n"), _motor_id, commandOffset);
+    Serial.printf(
+        F("Requesting motor %d data with unknown command offset 0x%X\n"),
+        _motor_id, commandOffset);
   }
   HAL_StatusTypeDef status =
       CANFD_SendMessage(_motor_id + commandOffset, nullptr, 0);
