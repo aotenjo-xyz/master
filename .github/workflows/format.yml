@@ -1,0 +1,26 @@
+name: Format Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check formatting
+        run: make format
+      
+      - name: Verify no changes
+        run: |
+          if git diff --quiet; then
+            echo "✓ Code is properly formatted"
+          else
+            echo "✗ Code formatting issues detected"
+            git diff
+            exit 1
+          fi
