@@ -17,42 +17,41 @@ float unpackFloatFromCanMessage(const uint8_t *data) {
  * @brief Convert byte length to FDCAN data length code
  */
 uint32_t GetFDCANDataLengthCode(uint8_t bytes) {
-  switch (bytes) {
-  case 0:
-    return FDCAN_DLC_BYTES_0;
-  case 1:
-    return FDCAN_DLC_BYTES_1;
-  case 2:
-    return FDCAN_DLC_BYTES_2;
-  case 3:
-    return FDCAN_DLC_BYTES_3;
-  case 4:
-    return FDCAN_DLC_BYTES_4;
-  case 5:
-    return FDCAN_DLC_BYTES_5;
-  case 6:
-    return FDCAN_DLC_BYTES_6;
-  case 7:
-    return FDCAN_DLC_BYTES_7;
-  case 8:
-    return FDCAN_DLC_BYTES_8;
-  case 12:
-    return FDCAN_DLC_BYTES_12;
-  case 16:
-    return FDCAN_DLC_BYTES_16;
-  case 20:
-    return FDCAN_DLC_BYTES_20;
-  case 24:
-    return FDCAN_DLC_BYTES_24;
-  case 32:
-    return FDCAN_DLC_BYTES_32;
-  case 48:
-    return FDCAN_DLC_BYTES_48;
-  case 64:
-    return FDCAN_DLC_BYTES_64;
-  default:
-    return FDCAN_DLC_BYTES_8; // Fallback
+  if (bytes <= 8) {
+    switch (bytes) {
+    case 0:
+      return FDCAN_DLC_BYTES_0;
+    case 1:
+      return FDCAN_DLC_BYTES_1;
+    case 2:
+      return FDCAN_DLC_BYTES_2;
+    case 3:
+      return FDCAN_DLC_BYTES_3;
+    case 4:
+      return FDCAN_DLC_BYTES_4;
+    case 5:
+      return FDCAN_DLC_BYTES_5;
+    case 6:
+      return FDCAN_DLC_BYTES_6;
+    case 7:
+      return FDCAN_DLC_BYTES_7;
+    default:
+      return FDCAN_DLC_BYTES_8;
+    }
   }
+  if (bytes <= 12)
+    return FDCAN_DLC_BYTES_12;
+  if (bytes <= 16)
+    return FDCAN_DLC_BYTES_16;
+  if (bytes <= 20)
+    return FDCAN_DLC_BYTES_20;
+  if (bytes <= 24)
+    return FDCAN_DLC_BYTES_24;
+  if (bytes <= 32)
+    return FDCAN_DLC_BYTES_32;
+  if (bytes <= 48)
+    return FDCAN_DLC_BYTES_48;
+  return FDCAN_DLC_BYTES_64;
 }
 
 /**
