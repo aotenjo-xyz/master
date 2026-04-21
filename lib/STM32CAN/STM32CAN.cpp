@@ -17,8 +17,28 @@ float unpackFloatFromCanMessage(const uint8_t *data) {
  * @brief Convert byte length to FDCAN data length code
  */
 uint32_t GetFDCANDataLengthCode(uint8_t bytes) {
-  if (bytes <= 8)
-    return bytes << 16;
+  if (bytes <= 8) {
+    switch (bytes) {
+    case 0:
+      return FDCAN_DLC_BYTES_0;
+    case 1:
+      return FDCAN_DLC_BYTES_1;
+    case 2:
+      return FDCAN_DLC_BYTES_2;
+    case 3:
+      return FDCAN_DLC_BYTES_3;
+    case 4:
+      return FDCAN_DLC_BYTES_4;
+    case 5:
+      return FDCAN_DLC_BYTES_5;
+    case 6:
+      return FDCAN_DLC_BYTES_6;
+    case 7:
+      return FDCAN_DLC_BYTES_7;
+    default:
+      return FDCAN_DLC_BYTES_8;
+    }
+  }
   if (bytes <= 12)
     return FDCAN_DLC_BYTES_12;
   if (bytes <= 16)
@@ -72,6 +92,6 @@ uint8_t GetBytesFromFDCANDataLength(uint32_t dlc) {
   case FDCAN_DLC_BYTES_64:
     return 64;
   default:
-    return dlc >> 16; // Fallback for standard lengths
+    return FDCAN_DLC_BYTES_8; // Fallback to 8 bytes if unknown code
   }
 }
