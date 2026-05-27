@@ -166,11 +166,9 @@ void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id,
                         int commandOffset) {
   float value = unpackFloatFromCanMessage(data);
   if (commandOffset == POS_COMMAND_OFFSET) {
-    Serial.printf("Received position response from motor %d: ", motor_id);
     //   print M<id>P<angle>
     Serial.printf("M%dP%.2f\n", motor_id, value);
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
-    Serial.printf("Received VSENSE response from motor %d: ", motor_id);
     // print M<id>V<vsense>
     Serial.printf("M%dV%.2f\n", motor_id, value);
   } else {
@@ -223,8 +221,6 @@ void CANFD_CheckReceived(void) {
         motor_id = rxHeader.Identifier - VSENSE_COMMAND_OFFSET;
         ReceivedFloatValue(rxData, motor_id, VSENSE_COMMAND_OFFSET);
       }
-      Serial.print("  Motor ID: ");
-      Serial.println(motor_id);
     }
 
     // Toggle LED when message received
