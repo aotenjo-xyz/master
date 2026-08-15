@@ -50,6 +50,24 @@ e.g. Get motor 1 position
 M0P
 ```
 
+### Set PID config
+```M<motor_id>S<vP>,<vI>,<vD>,<pP>,<voltageLimit>,<velocityLimit>,<lpfTf>```
+
+e.g. Set motor 1 PID config to vP=1.0, vI=0.1, vD=0.01, pP=0.5, voltageLimit=12.0, velocityLimit=10.0, lpfTf=0.1
+```
+M0S1.0,0.1,0.01,0.5,12.0,10.0,0.1
+```
+
+### Get PID config
+```M<motor_id>I
+```
+
+e.g. Get motor 1 PID config
+```
+M0I
+```
+	
+
 ### Read VCC voltage
 ```
 VSENSE
