@@ -178,6 +178,17 @@ void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id,
   }
 };
 
+void ReceivedPIDConfigValue(const uint8_t *data, const uint32_t motor_id) {
+  float config[7];
+  memcpy(config, data, sizeof(config));
+
+  Serial.printf(
+      "M%d PID: vP=%.4f vI=%.4f vD=%.4f pP=%.4f voltage=%.2f "
+      "velocity=%.2f lpfTf=%.4f\n",
+      motor_id, config[0], config[1], config[2], config[3], config[4],
+      config[5], config[6]);
+}
+
 /**
  * @brief Check for received CAN FD messages
  * @param None
@@ -221,6 +232,9 @@ void CANFD_CheckReceived(void) {
         motor_id = rxHeader.Identifier - VSENSE_COMMAND_OFFSET;
         ReceivedFloatValue(rxData, motor_id, VSENSE_COMMAND_OFFSET);
       }
+    } else if (rxHeader.Identifier >= PID_CONFIG_REQUEST_CMD_OFFSET) {
+      uint32_t motor_id = rxHeader.Identifier - PID_CONFIG_REQUEST_CMD_OFFSET;
+      ReceivedPIDConfigValue(rxData, motor_id);
     }
 
     // Toggle LED when message received
@@ -282,6 +296,8 @@ void handleMotorDataRequestCommand(int _motor_id, uint32_t commandOffset) {
     Serial.printf(F("Requesting motor %d position\n"), _motor_id);
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
     Serial.printf(F("Requesting motor %d VSENSE\n"), _motor_id);
+  } else if (commandOffset == PID_CONFIG_REQUEST_CMD_OFFSET) {
+    Serial.printf(F("Requesting motor %d PID config\n"), _motor_id);
   } else {
     Serial.printf(
         F("Requesting motor %d data with unknown command offset 0x%X\n"),
@@ -300,6 +316,7 @@ void parseCommand(String command) {
     int sepIdx = command.indexOf("A");
     int posIdx = command.indexOf("P");
     int motorVsenseIdx = command.indexOf("V");
+    int motorPidIdx = command.indexOf("I");
     int motorId = -1;
 
     if (sepIdx != -1) { // Angle control: MxAangle
@@ -312,6 +329,9 @@ void parseCommand(String command) {
     } else if (motorVsenseIdx != -1) { // VSENSE request: MxV
       motorId = command.substring(1, motorVsenseIdx).toInt();
       handleMotorDataRequestCommand(motorId, VSENSE_COMMAND_OFFSET);
+    } else if (motorPidIdx != -1) { // PID request: MxI
+      motorId = command.substring(1, motorPidIdx).toInt();
+      handleMotorDataRequestCommand(motorId, PID_CONFIG_REQUEST_CMD_OFFSET);
     }
   } else if (command.startsWith("VSENSE")) {
     float vccVoltage = readVoltage();
