@@ -51,7 +51,9 @@ M0P
 ```
 
 ### Set PID config
-```M<motor_id>S<vP>,<vI>,<vD>,<pP>,<voltageLimit>,<velocityLimit>,<lpfTf>```
+```
+M<motor_id>S<vP>,<vI>,<vD>,<pP>,<voltageLimit>,<velocityLimit>,<lpfTf>
+```
 
 e.g. Set motor 1 PID config to vP=1.0, vI=0.1, vD=0.01, pP=0.5, voltageLimit=12.0, velocityLimit=10.0, lpfTf=0.1
 ```
