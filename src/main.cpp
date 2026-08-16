@@ -178,6 +178,16 @@ void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id,
   }
 };
 
+void ReceivedPIDConfigValue(const uint8_t *data, const uint32_t motor_id) {
+  float config[7];
+  memcpy(config, data, sizeof(config));
+
+  Serial.printf("M%d PID: vP=%.4f vI=%.4f vD=%.4f pP=%.4f voltage=%.2f "
+                "velocity=%.2f lpfTf=%.4f\n",
+                motor_id, config[0], config[1], config[2], config[3], config[4],
+                config[5], config[6]);
+}
+
 /**
  * @brief Check for received CAN FD messages
  * @param None
@@ -221,6 +231,9 @@ void CANFD_CheckReceived(void) {
         motor_id = rxHeader.Identifier - VSENSE_COMMAND_OFFSET;
         ReceivedFloatValue(rxData, motor_id, VSENSE_COMMAND_OFFSET);
       }
+    } else if (rxHeader.Identifier >= PID_CONFIG_REQUEST_CMD_OFFSET) {
+      uint32_t motor_id = rxHeader.Identifier - PID_CONFIG_REQUEST_CMD_OFFSET;
+      ReceivedPIDConfigValue(rxData, motor_id);
     }
 
     // Toggle LED when message received
@@ -277,11 +290,27 @@ void handleMotorAngleCommand(int _motor_id, float targetAngle) {
   }
 }
 
+void handleSetPIDCommand(int _motor_id, float vP, float vI, float vD, float pP,
+                         float voltageLimit, float velocityLimit, float lpfTf) {
+  Serial.printf("M%dS%.4f,%.4f,%.4f,%.4f,%.2f,%.2f,%.4f\n", _motor_id, vP, vI,
+                vD, pP, voltageLimit, velocityLimit, lpfTf);
+  float config[7] = {vP, vI, vD, pP, voltageLimit, velocityLimit, lpfTf};
+  memcpy(txData, config, sizeof(config));
+  HAL_StatusTypeDef status = CANFD_SendMessage(
+      _motor_id + PID_CONFIG_CMD_OFFSET, txData, sizeof(config));
+  if (status != HAL_OK) {
+    Serial.printf("Failed to send PID config to motor %d, error code: %d\n",
+                  _motor_id, status);
+  }
+}
+
 void handleMotorDataRequestCommand(int _motor_id, uint32_t commandOffset) {
   if (commandOffset == POS_COMMAND_OFFSET) {
     Serial.printf(F("Requesting motor %d position\n"), _motor_id);
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
     Serial.printf(F("Requesting motor %d VSENSE\n"), _motor_id);
+  } else if (commandOffset == PID_CONFIG_REQUEST_CMD_OFFSET) {
+    Serial.printf(F("Requesting motor %d PID config\n"), _motor_id);
   } else {
     Serial.printf(
         F("Requesting motor %d data with unknown command offset 0x%X\n"),
@@ -296,10 +325,14 @@ void handleMotorDataRequestCommand(int _motor_id, uint32_t commandOffset) {
 }
 
 void parseCommand(String command) {
+  command.trim();
+
   if (command.startsWith("M")) {
     int sepIdx = command.indexOf("A");
     int posIdx = command.indexOf("P");
     int motorVsenseIdx = command.indexOf("V");
+    int pidConfigIdx = command.indexOf("S");
+    int pidConfigReqIdx = command.indexOf("I");
     int motorId = -1;
 
     if (sepIdx != -1) { // Angle control: MxAangle
@@ -312,6 +345,58 @@ void parseCommand(String command) {
     } else if (motorVsenseIdx != -1) { // VSENSE request: MxV
       motorId = command.substring(1, motorVsenseIdx).toInt();
       handleMotorDataRequestCommand(motorId, VSENSE_COMMAND_OFFSET);
+    } else if (pidConfigIdx != -1) { // Set PID: MxS
+      motorId = command.substring(1, pidConfigIdx).toInt();
+      // MxS<vp>,<vi>,<vd>,<pp>,<voltage_limit>,<velocity_limit>,<lpf_tf>
+      // e.g., M0S0.2,20.0,0.001,20.0,4.0,5.0,0.01
+      String params = command.substring(pidConfigIdx + 1);
+      params.trim();
+
+      float values[7] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+      int valueIndex = 0;
+      int start = 0;
+
+      while (valueIndex < 7) {
+        int comma = params.indexOf(',', start);
+        String token;
+
+        if (comma == -1) {
+          token = params.substring(start);
+        } else {
+          token = params.substring(start, comma);
+        }
+
+        token.trim();
+        if (token.length() > 0) {
+          values[valueIndex++] = token.toFloat();
+        }
+
+        if (comma == -1) {
+          break;
+        }
+        start = comma + 1;
+      }
+
+      if (valueIndex != 7) {
+        Serial.printf("Bad PID payload: '%s' (%d values parsed)\n",
+                      params.c_str(), valueIndex);
+        return;
+      }
+
+      float vP = values[0];
+      float vI = values[1];
+      float vD = values[2];
+      float pP = values[3];
+      float voltageLimit = values[4];
+      float velocityLimit = values[5];
+      float lpfTf = values[6];
+
+      handleSetPIDCommand(motorId, vP, vI, vD, pP, voltageLimit, velocityLimit,
+                          lpfTf);
+    } else if (pidConfigReqIdx != -1) { // PID request: MxI
+      motorId = command.substring(1, pidConfigReqIdx).toInt();
+      handleMotorDataRequestCommand(motorId, PID_CONFIG_REQUEST_CMD_OFFSET);
     }
   } else if (command.startsWith("VSENSE")) {
     float vccVoltage = readVoltage();
@@ -337,12 +422,16 @@ void loop() {
   // Check for serial input
   while (Serial.available() > 0) {
     char receivedChar = Serial.read();
+    if (receivedChar == '\r') {
+      continue; // Ignore CR from serial monitors and terminal tools
+    }
     if (receivedChar == '\n') {
       memset(txData, 0, sizeof(txData)); // Clear txData before use
 
       inputBuffer[bufferIndex] = '\0'; // Null-terminate the string
       parseCommand(inputBuffer);
       bufferIndex = 0; // Reset buffer index for the next command
+      inputBuffer[0] = '\0';
     } else {
       if (bufferIndex < BUFFER_SIZE - 1) { // Prevent buffer overflow
         inputBuffer[bufferIndex++] = receivedChar;
