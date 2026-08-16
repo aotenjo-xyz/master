@@ -61,7 +61,9 @@ M0S1.0,0.1,0.01,0.5,12.0,10.0,0.1
 ```
 
 ### Get PID config
-```M<motor_id>I```
+```
+M<motor_id>I
+```
 
 e.g. Get motor 1 PID config
 ```
