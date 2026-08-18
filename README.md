@@ -45,6 +45,8 @@ M0A6.28
 M<motor_id>P
 ```
 
+Response format: `M<motor_id>P<position>`
+
 e.g. Get motor 1 position
 ```
 M0P
@@ -64,6 +66,8 @@ M0S1.0,0.1,0.01,0.5,12.0,10.0,0.1
 ```
 M<motor_id>I
 ```
+
+Response format: `M<motor_id>I<vP>,<vI>,<vD>,<pP>,<voltageLimit>,<velocityLimit>,<lpfTf>`
 
 e.g. Get motor 1 PID config
 ```
