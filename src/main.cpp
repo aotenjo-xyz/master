@@ -166,7 +166,7 @@ void ReceivedFloatValue(const uint8_t *data, const uint32_t motor_id,
                         int commandOffset) {
   float value = unpackFloatFromCanMessage(data);
   if (commandOffset == POS_COMMAND_OFFSET) {
-    //   print M<id>P<angle>
+    // print M<id>P<angle>
     Serial.printf("M%dP%.2f\n", motor_id, value);
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
     // print M<id>V<vsense>
@@ -182,10 +182,10 @@ void ReceivedPIDConfigValue(const uint8_t *data, const uint32_t motor_id) {
   float config[7];
   memcpy(config, data, sizeof(config));
 
-  Serial.printf("M%d PID: vP=%.4f vI=%.4f vD=%.4f pP=%.4f voltage=%.2f "
-                "velocity=%.2f lpfTf=%.4f\n",
-                motor_id, config[0], config[1], config[2], config[3], config[4],
-                config[5], config[6]);
+  // print M<id>I<vP>,<vI>,<vD>,<pP>,<voltageLimit>,<velocityLimit>,<lpfTf>
+  Serial.printf("M%dI%.4f,%.4f,%.4f,%.4f,%.2f,%.2f,%.4f\n", motor_id, config[0],
+                config[1], config[2], config[3], config[4], config[5],
+                config[6]);
 }
 
 /**
