@@ -8,6 +8,25 @@
 int CAN_LED_PIN = PC6;
 int ESTOP_LED_PIN = PC15;
 
+// Local stepper replaces CAN motor M0.
+constexpr int STEPPER_MOTOR_ID = 0;
+constexpr pin_size_t STEPPER_PUL_PIN = PA8;
+constexpr pin_size_t STEPPER_DIR_PIN = PA9;
+constexpr pin_size_t STEPPER_ENABLE_PIN = PA10;
+constexpr int32_t STEPPER_FULL_STEPS_PER_REV = 200;
+constexpr int32_t STEPPER_MICROSTEPS = 8;
+constexpr int32_t STEPPER_STEPS_PER_REV =
+    STEPPER_FULL_STEPS_PER_REV * STEPPER_MICROSTEPS;
+constexpr uint32_t STEPPER_HALF_PERIOD_US = 500;
+constexpr bool STEPPER_ENABLE_ACTIVE_LOW = true;
+
+// Open-loop position. Zero is the position at power-up/reset.
+int32_t stepperPositionSteps = 0;
+int32_t stepperTargetSteps = 0;
+uint32_t stepperNextTransitionUs = 0;
+bool stepperPulseHigh = false;
+bool stepperDirectionPositive = true;
+
 // CAN FD Configuration
 FDCAN_HandleTypeDef hfdcan1;
 FDCAN_TxHeaderTypeDef txHeader;
@@ -247,6 +266,17 @@ void setup() {
   Serial.begin(115200);
   pinMode(CAN_LED_PIN, OUTPUT);
 
+  // Set safe levels before enabling the local stepper driver.
+  digitalWrite(STEPPER_PUL_PIN, LOW);
+  digitalWrite(STEPPER_DIR_PIN, LOW);
+  digitalWrite(STEPPER_ENABLE_PIN,
+               STEPPER_ENABLE_ACTIVE_LOW ? HIGH : LOW);
+  pinMode(STEPPER_PUL_PIN, OUTPUT);
+  pinMode(STEPPER_DIR_PIN, OUTPUT);
+  pinMode(STEPPER_ENABLE_PIN, OUTPUT);
+  digitalWrite(STEPPER_ENABLE_PIN,
+               STEPPER_ENABLE_ACTIVE_LOW ? LOW : HIGH);
+
   delay(5000);
   // while (!Serial);
 
@@ -279,7 +309,52 @@ void setup() {
   Serial.println("Start!");
 }
 
+void setStepperTargetAngle(float targetAngle) {
+  stepperTargetSteps = lroundf(
+      targetAngle * static_cast<float>(STEPPER_STEPS_PER_REV) / TWO_PI);
+  const float commandedAngle =
+      static_cast<float>(stepperTargetSteps) * TWO_PI /
+      static_cast<float>(STEPPER_STEPS_PER_REV);
+  Serial.printf("M0A%.4f\n", commandedAngle);
+}
+
+void updateStepper() {
+  const uint32_t now = micros();
+  if (static_cast<int32_t>(now - stepperNextTransitionUs) < 0) {
+    return;
+  }
+
+  if (stepperPulseHigh) {
+    digitalWrite(STEPPER_PUL_PIN, LOW);
+    stepperPulseHigh = false;
+    stepperNextTransitionUs = now + STEPPER_HALF_PERIOD_US;
+    return;
+  }
+
+  if (stepperPositionSteps == stepperTargetSteps) {
+    return;
+  }
+
+  const bool requestedDirection = stepperTargetSteps > stepperPositionSteps;
+  if (requestedDirection != stepperDirectionPositive) {
+    stepperDirectionPositive = requestedDirection;
+    digitalWrite(STEPPER_DIR_PIN, stepperDirectionPositive ? HIGH : LOW);
+    stepperNextTransitionUs = now + 20;
+    return;
+  }
+
+  digitalWrite(STEPPER_PUL_PIN, HIGH);
+  stepperPulseHigh = true;
+  stepperPositionSteps += stepperDirectionPositive ? 1 : -1;
+  stepperNextTransitionUs = now + STEPPER_HALF_PERIOD_US;
+}
+
 void handleMotorAngleCommand(int _motor_id, float targetAngle) {
+  if (_motor_id == STEPPER_MOTOR_ID) {
+    setStepperTargetAngle(targetAngle);
+    return;
+  }
+
   Serial.printf("M%dA%.2f\n", _motor_id, targetAngle);
   packAngleIntoCanMessage(txData, targetAngle);
   HAL_StatusTypeDef status =
@@ -305,6 +380,14 @@ void handleSetPIDCommand(int _motor_id, float vP, float vI, float vD, float pP,
 }
 
 void handleMotorDataRequestCommand(int _motor_id, uint32_t commandOffset) {
+  if (_motor_id == STEPPER_MOTOR_ID && commandOffset == POS_COMMAND_OFFSET) {
+    const float commandedAngle =
+        static_cast<float>(stepperPositionSteps) * TWO_PI /
+        static_cast<float>(STEPPER_STEPS_PER_REV);
+    Serial.printf("M0P%.4f\n", commandedAngle);
+    return;
+  }
+
   if (commandOffset == POS_COMMAND_OFFSET) {
     Serial.printf(F("Requesting motor %d position\n"), _motor_id);
   } else if (commandOffset == VSENSE_COMMAND_OFFSET) {
@@ -403,6 +486,11 @@ void parseCommand(String command) {
     Serial.printf("VCC Voltage: %.2f V\n", vccVoltage);
   } else if (command.startsWith("ESTOP")) {
     Serial.println("Emergency stop command");
+    stepperTargetSteps = stepperPositionSteps;
+    digitalWrite(STEPPER_PUL_PIN, LOW);
+    stepperPulseHigh = false;
+    digitalWrite(STEPPER_ENABLE_PIN,
+                 STEPPER_ENABLE_ACTIVE_LOW ? HIGH : LOW);
     digitalWrite(ESTOP_LED_PIN, HIGH);
     HAL_StatusTypeDef status = CANFD_SendMessage(ESTOP, nullptr, 0);
     if (status != HAL_OK) {
@@ -419,6 +507,8 @@ char inputBuffer[BUFFER_SIZE];
 int bufferIndex = 0;
 
 void loop() {
+  updateStepper();
+
   // Check for serial input
   while (Serial.available() > 0) {
     char receivedChar = Serial.read();
@@ -437,11 +527,11 @@ void loop() {
         inputBuffer[bufferIndex++] = receivedChar;
       }
     }
+
+    updateStepper();
   }
 
   // Check for received messages
   CANFD_CheckReceived();
-
-  // Small delay to prevent overwhelming the system
-  delay(10);
+  updateStepper();
 }
