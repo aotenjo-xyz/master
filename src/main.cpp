@@ -3,6 +3,7 @@
 #include <math.h>
 #include "STM32CAN.h"
 #include "VSENSE.h"
+#include "BoardInfo.h"
 // clang-format on
 
 int CAN_LED_PIN = PC6;
@@ -275,6 +276,11 @@ void setup() {
 
   analogReadResolution(12);
 
+  const BoardInfo board = readBoardInfo();
+
+  Serial.printf("Board: product=0x%08lX version=%u.%u programmed=%d valid=%d\n",
+                static_cast<unsigned long>(board.product), board.major,
+                board.minor, board.programmed, board.valid);
   delay(1000);
   Serial.println("Start!");
 }
